@@ -2,28 +2,22 @@
 
 import json
 from pathlib import Path
+import uiml
+from uiml import set_style
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QThread, Signal
 import os
 import subprocess
 import winreg
-import sys
 import ctypes
 import win32com.client
 import hashlib
 import re
+from typing import *
 
 setting_path = Path('data', 'settings.json')
 setting_path.parent.mkdir(parents=True, exist_ok=True)
-
-def _show_message(message, title, status):
-    if status == 0:
-        QMessageBox.information(None, title, message)
-    elif status == 1:
-        QMessageBox.warning(None, title, message)
-    elif status == 2:
-        QMessageBox.critical(None, title, message)
         
 def multi_replace(text, replace_dict):
     '''一次性替换多个子串'''
@@ -37,31 +31,20 @@ def get_resource_path(*paths):
     '''
     获取资源文件路径
     '''
-    try:
-        resource = Path('res') # 获取当前目录的资源文件夹路径
-        if not resource.exists():
-            raise FileNotFoundError('Resource folder missing: res not found')
-        return str(resource.joinpath(*paths))
-    except Exception as e:
-        _show_message(f'Resource file missing: {e}', 'Error', 2)
-        sys.exit(1)
+    resource = Path('res') # 获取当前目录的资源文件夹路径
+    if not resource.exists():
+        raise FileNotFoundError('Resource not found')
+    return str(resource.joinpath(*paths))
 
-try:
-    lang_path = Path('res', 'langs')
-    with open(lang_path / 'langs.json', 'r', encoding='utf-8') as f:
-        langs = json.load(f)
-        
-    with open(lang_path / 'control.json', 'r', encoding='utf-8') as f:
-        control_langs = json.load(f)
+lang_path = Path('res', 'langs')
+with open(lang_path / 'langs.json', 'r', encoding='utf-8') as f:
+    langs = json.load(f)
     
-    with open(lang_path / 'init.json', 'r', encoding='utf-8') as f:
-        init_langs = json.load(f)
-except FileNotFoundError:
-    _show_message('Resource file missing: langs not found', 'Error', 2)
-    sys.exit(1)
-except json.JSONDecodeError:
-    _show_message('Resource file damaged: langs format error', 'Error', 2)
-    sys.exit(1)
+with open(lang_path / 'control.json', 'r', encoding='utf-8') as f:
+    control_langs = json.load(f)
+
+with open(lang_path / 'init.json', 'r', encoding='utf-8') as f:
+    init_langs = json.load(f)
     
 def load_settings():
     '''
@@ -85,7 +68,7 @@ with open(get_resource_path('vars', 'mem_id.json'), 'r') as f:
 
 def get_lang(lang_package_id, lang_id = None, source = None):
     source = langs if source is None else source
-    lang_id = settings.get('select_lang', 0) if lang_id is None else lang_id
+    lang_id = select_lang if lang_id is None else lang_id
     for i in source:
         if i['lang_id'] == 0: # 设置默认语言包
             default_lang_text = i['lang_package']
@@ -94,7 +77,7 @@ def get_lang(lang_package_id, lang_id = None, source = None):
     try:
         return lang_text[lang_package_id]
     except KeyError:
-        print(f'{lang_package_id} not found')
+        print(f'Language {lang_package_id} not found')
         return 'Language not found'
     except UnboundLocalError:
         lang_text = {}
@@ -118,6 +101,9 @@ def parse_system_language_to_lang_id():
     return 0
 
 system_lang = parse_system_language_to_lang_id()
+select_lang = settings.get('select_lang', 0)
+if select_lang == -1:
+    select_lang = system_lang
 
 def get_control_lang(lang_id):
     return get_lang(lang_id, source=control_langs)
@@ -277,7 +263,7 @@ def get_file_hash(file_path, algorithm):
     except FileNotFoundError:
         return None
     except Exception as e:
-        print(f'计算哈希时出错: {e}')
+        raise Exception(f'计算哈希时出错: {e}')
         return None
     
 class QtThread(QThread):
@@ -294,3 +280,173 @@ class QtThread(QThread):
         '''线程执行函数'''
         result = self.func(*self.args, **self.kwargs)
         self.finished.emit(result)
+        
+def widget_replacer(ui_data: str):
+    '''
+    替换UI中的widget，使用函数式返回
+    '''
+    if ui_data.startswith('!lang '):
+        if len(ui_data.split(' ')) == 2:
+            return get_lang(ui_data.split(' ')[1]) # 语言解析
+        else:
+            return get_lang(ui_data.split(' ')[1], source=globals()[ui_data.split(' ')[2]]) # 语言解析
+    else:
+        return uiml.default_replacer(ui_data) # 交由uiml进行替换
+        
+def layout_parser(ui_data: Dict[str, Any], namespace=None, additional=None):
+    additional_value = additional if additional is not None else {} # 额外参数
+    if not ui_data.get('show_if', True):
+        return None
+    if ui_data.get('direction').lower() == 'u':
+        input_compiled_list = []
+        # 索引0 -- 字
+        # 索引1 -- 输入框
+        # 索引2 -- 选择框
+        inputs = ui_data['content'][1]
+        for input in inputs['content']:
+            input_compiled_list.append(uiml.compile_ui(input, namespace, additional_value)) # 递归解析
+        combos = ui_data['content'][2] # 组合框
+        combos_compiled_list = []
+        for combo in combos['content']:
+            combos_compiled_list.append(uiml.compile_ui(combo, namespace, additional_value)) # 递归解析
+        return {'name': ui_data.get('name'), 'direction': ui_data.get('direction'), "texts": ui_data['content'][0]['values'], 'inputs': input_compiled_list, 'combos': combos_compiled_list}
+    return uiml.default_layout_parser(ui_data, namespace, additional_value) # 交由uiml进行替换
+
+def widget_parser(ui_data: Dict[str, Any], namespace=None, additional=None):
+    additional_value = additional if additional is not None else {} # 额外参数
+    show_value = ui_data.get('show_if', True)
+    uiml_value = uiml.default_widget_parser(ui_data, namespace, additional_value) # 交由uiml进行替换
+    if not show_value:
+        return None
+    return uiml_value
+
+uiml.set_namespace(
+    value_replace_func=widget_replacer, layout_parser_func=layout_parser, widget_parser_func=widget_parser, 
+    additional_used_widget_key=['show_if'], additional_used_layout_key=['show_if'], reverse=True,
+    enable_value_convert=True
+) # 设置uiml的控制函数
+
+class UIWindow(uiml.UIMLLayout):
+    def __init__(self, list=None):
+        super().__init__(list)
+        
+    def find_widget(self, path: str, data=None):
+        '''
+        在嵌套字典结构中按点分隔路径查找元素。
+
+        规则：
+        - 路径中的每一段对应字典中的 'name' 字段。
+        - 若当前节点是布局（含有 'direction' 键），且不是最后一段，则自动进入其子元素继续查找。
+        - 普通布局（direction 非 'u'）的子元素在 'content' 列表中。
+        - 特殊布局（direction == 'u'）的子元素在 'inputs' 和 'combos' 列表中（'texts' 不参与导航）。
+        - 最后一段如果是普通布局，返回其 'content' 列表；如果是 'u' 布局，返回 {'texts':..., 'inputs':..., 'combos':...}；如果是控件，返回其 'content'。
+        - 路径必须完整且精确，找不到时抛出 KeyError。
+
+        参数:
+            path: 点分隔的路径字符串，如 "layout.vlayout.checkbox2"
+            data: 根字典（例如 {'name': 'layout', 'direction': 'h', 'content': [...]}）
+
+        返回:
+            根据路径找到的控件对象、布局的 content 列表，或 'u' 布局的 texts/inputs/combos 字典。
+        '''
+        data = self.list if data is None else data
+        parts = path.split('.')
+        if not parts:
+            raise ValueError("Empty path")
+
+        # 根节点名称必须匹配第一段
+        if data.get('name') != parts[0]:
+            raise KeyError(f"Root name mismatch: expected '{parts[0]}', got '{data.get('name')}'")
+
+        current = data
+
+        for i, part in enumerate(parts):
+            # 检查当前节点名称是否匹配
+            if current.get('name') != part:
+                raise KeyError(f"Name mismatch: expected '{part}', got '{current.get('name')}'")
+
+            # 最后一段
+            if i == len(parts) - 1:
+                if 'direction' in current:
+                    direction = current.get('direction', '').lower()
+                    if direction == 'u':
+                        # 特殊布局：返回 texts、inputs、combos 组成的字典
+                        return {
+                            'texts': current.get('texts', []),
+                            'inputs': current.get('inputs', []),
+                            'combos': current.get('combos', [])
+                        }
+                    else:
+                        # 普通布局：返回 content 列表
+                        content = current.get('content')
+                        if content is None:
+                            raise ValueError(f"Layout '{part}' has no content")
+                        if not isinstance(content, list):
+                            raise TypeError(f"Layout '{part}' content is not a list")
+                        return content
+                else:
+                    # 控件：返回 content 属性
+                    content = current.get('content')
+                    if content is None:
+                        raise ValueError(f"Widget '{part}' has no content")
+                    return content
+
+            # 不是最后一段，当前节点必须是布局
+            if 'direction' not in current:
+                raise KeyError(f"'{part}' is not a layout, cannot traverse further")
+
+            direction = current.get('direction', '').lower()
+            next_name = parts[i + 1]
+            found = None
+
+            if direction == 'u':
+                # 从 inputs 和 combos 中查找子元素
+                for child in current.get('inputs', []) + current.get('combos', []):
+                    if child.get('name') == next_name:
+                        found = child
+                        break
+            else:
+                # 普通布局从 content 中查找
+                for child in current.get('content', []):
+                    if child.get('name') == next_name:
+                        found = child
+                        break
+
+            if found is None:
+                raise KeyError(f"Child '{next_name}' not found in layout '{part}'")
+            current = found
+
+        # 正常流程不会执行到这里
+        return None
+    
+    def return_layout(self, layout):
+        return layout, 'layout', 0
+
+    def extend_layout(self, list_info):
+        if list_info['direction'].lower() == 'u':
+            from uiStyles.widgets import UnitInputLayout
+            layout = UnitInputLayout()
+            for text, input, combo in zip(list_info['texts'], list_info['inputs'], list_info['combos']):
+                if text.startswith('!lang '): # 语言解析
+                    text = get_lang(text[6:])
+                layout.addUnitRow(text, input['content'], combo['content'])
+            return layout, 'layout', 0
+        else:
+            uiml.WidgetError.direction_error() # 交由 uiml 进行处理
+            
+    def adder(self, widget_info):
+        return (widget_info[0], ), {'stretch': widget_info[2]}
+    
+    def add_layout(self, list_content: Dict, layout: uiml.QLayout):
+        draw_on_end = list_content.get('stretch_place', 'end') == 'end' # 是否在布局末尾绘制拉伸
+        if not draw_on_end: # 在布局前绘制拉伸
+            self._add_stretch(list_content, layout) # 添加伸缩
+        self._for_loop(list_content, layout) # 递归绘制子布局
+        if draw_on_end: # 在布局末尾绘制拉伸
+            self._add_stretch(list_content, layout) # 添加伸缩
+        return self.return_layout(layout)
+            
+    def extend_widget(self, widget_info):
+        widget = list(super().extend_widget(widget_info))
+        widget.append(widget_info.get('stretch', 0))
+        return tuple(widget)

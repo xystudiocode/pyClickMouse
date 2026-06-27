@@ -1,0 +1,77 @@
+<layout name='clicker' direction='v' stretch=true>
+    <QLabel name='title' args=[title] style='big_text_24' />
+    <QLabel name='description' args=['!lang 84'] style='dest' />
+    <layout name='attributes_layout' direction='v' stretch=true show_if=dev_flags.get('new_settings',False) >
+    <UFrame name='line4' style='frame' />
+        <UCheckBox 
+            name='modify_using_default_input'
+            args=['!lang d7'] 
+            init_steps=[{'name': 'setChecked', 'args': [setting_value.modify_using_default_input]}] 
+            signals={'checkStateChanged': lambda: self.on_clicker_changed(self.modify_using_default_input.isChecked, SettingText.modify_using_default_input)}
+        />
+        <QLabel name='allow_modify_desc' args=['!lang d9'] style='dest_small' />、
+        <UCheckBox 
+            name='modify_using_default_combo'
+            args=['!lang d8'] 
+            init_steps=[{'name': 'setChecked', 'args': [setting_value.modify_using_default_combo]}] 
+            signals={'checkStateChanged': lambda: self.on_clicker_changed(self.modify_using_default_combo.isChecked, SettingText.modify_using_default_combo)}
+        />
+        <QLabel name='allow_modify_desc' args=['!lang da'] style='dest_small' />
+    </layout>
+    <UFrame name='line1' style='frame' />
+    <layout name='delay_layout' direction='v' stretch=true>
+        <layout name='delay_input_layout' direction='h' stretch=true>
+            <QLabel name='delay_label' args=[get_lang('46')+': '] />
+            <QLineEdit 
+                name='delay_input' 
+                init_steps=[
+                    {'name':'setText', 'args':[setting_value.click_delay]}
+                ]
+                signals={'textChanged': lambda: self.on_clicker_changed(self.default_delay.text, SettingText.click_delay, self.use_default_delay)}
+            />
+            <QComboBox
+                name='delay_combo'
+                init_steps=[
+                    {'name': 'addItems', 'args': [['!lang ms unit_lang', '!lang s unit_lang']]},
+                    {'name': 'setCurrentIndex', 'args': [setting_value.delay_unit]}
+                ]
+                signals={'currentIndexChanged': lambda: self.on_clicker_changed(self.delay_combo.currentIndex, SettingText.delay_unit)}
+            />
+        </layout>
+        <UCheckBox 
+            name='error_use_default_delay' 
+            args=['!lang 47'] 
+            init_steps=[{'name': 'setChecked', 'args': [setting_value.delay_error_use_default]}] 
+            signals={'checkStateChanged': lambda: self.on_clicker_changed(self.use_default_delay.isChecked, SettingText.delay_error_use_default)}
+        />
+    </layout>
+    <UFrame name='line2' style='frame' />
+    <layout name='times_layout' direction='v' stretch=true>
+        <layout name='times_input_layout' direction='h' stretch=true>
+            <QLabel name='times_label' args=[get_lang('85')+': '] />
+            <QLineEdit 
+                name='times_input' 
+                init_steps=[
+                    {'name':'setText', 'args':[str(setting_value.click_times)]}
+                ]
+                signals={'textChanged': lambda: self.on_clicker_changed(self.default_time.text, SettingText.click_times, self.use_default_times)}
+            />
+            <QComboBox
+                name='times_combo'
+                init_steps=[
+                    {'name': 'addItems', 'args': [['!lang 66', '!lang 2a', '!lang 2b']]},
+                    {'name': 'setCurrentIndex', 'args': [setting_value.times_unit]}
+                ]
+                signals={'currentIndexChanged': lambda: self.on_clicker_changed(self.times_combo.currentIndex, SettingText.times_unit)}
+            />
+        </layout>
+        <UCheckBox 
+            name='error_use_default_times' 
+            args=['!lang 86'] 
+            init_steps=[{'name': 'setChecked', 'args': [setting_value.times_error_use_default]}] 
+            signals={'checkStateChanged': lambda: self.on_clicker_changed(self.use_default_times.isChecked, SettingText.times_error_use_default)}
+        />
+    </layout>
+    <UFrame name='line3' style='frame' />
+    <QLabel name='total_time_label' args=[get_lang('2c')+': '+get_lang('61')] style='big_text_16' init_steps=[{'name': 'setAlignment', 'args': [Qt.AlignHCenter]}] />
+</layout>
