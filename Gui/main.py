@@ -3,41 +3,47 @@ from PySide6.QtWidgets import QApplication
 import sys
 from logger import Logger, logging, ExceptionVal
 app = QApplication(sys.argv)
+
+# 初始化日志记录器
 logger = Logger('clickmouse.main')
+service_logger = Logger('clickmouse.service')
+widget_logger = Logger('clickmouse.ui')
 
 # 加载框架
 try:
     from sharelibs import * # 共享库
-except:
-    logger.exception('clickmouse.main', mode=ExceptionVal.all)
-from uiStyles.QUI import *
-from PySide6.QtWebEngineWidgets import QWebEngineView
-from uiStyles import *
-from datetime import datetime # 检查时间
-from pynput import keyboard # 热键功能库
-import pyautogui # 鼠标操作库
-from time import sleep, time # 延迟
-from check_update import check_update, web_data, download_file # 更新检查
-from uiStyles import indexes as style_indexes
-from sharelibs import __version__ # 版本号
-import winreg # 注册表库
-import math # 数学库
-import colorsys # 颜色库
-import struct # 字节处理库
-import pytz # 时区库
-from traceback import format_exc # 异常格式化
-from itertools import chain # 迭代器库
-import platform # 系统信息
-from txtinfo import *
-import os # 系统库
-import shutil # 用于删除文件夹
-import json # 用于读取json文件
-from pathlib import Path # 路径库
-import pyperclip # 剪贴板
+    from uiStyles.QUI import *
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+    from uiStyles import *
+    from uiStyles.levels import LevelManager
+    from uiStyles.glasskit import GlassMainWindow, GlassDialog, GlassMenuBar
+    from datetime import datetime # 检查时间
+    from pynput import keyboard # 热键功能库
+    import pyautogui # 鼠标操作库
+    from time import sleep, time # 延迟
+    from check_update import check_update, web_data, download_file # 更新检查
+    from uiStyles import indexes as style_indexes
+    from sharelibs import __version__ # 版本号
+    import winreg # 注册表库
+    import math # 数学库
+    import colorsys # 颜色库
+    import struct # 字节处理库
+    import pytz # 时区库
+    from traceback import format_exc # 异常格式化
+    from itertools import chain # 迭代器库
+    import platform # 系统信息
+    from txtinfo import *
+    import os # 系统库
+    import shutil # 用于删除文件夹
+    import json # 用于读取json文件
+    from pathlib import Path # 路径库
+    import pyperclip # 剪贴板
 
-# 系统api
-import ctypes
-from ctypes import wintypes
+    # 系统api
+    import ctypes
+    from ctypes import wintypes
+except Exception as e:
+    logger.exception('clickmouse.main', mode=ExceptionVal.all)
 
 # TODO: 添加更多更新设置，使用hashlib.algorithms_available获取支持的hash算法
 
@@ -63,62 +69,7 @@ def get_windows_version():
 def filter_hotkey(text:str):
     return text.split('(')[0]
 
-@logger.auto_logger('clickmouse.update')
-def load_update_cache():
-    '''
-    加载更新缓存文件
-    '''
-    service = 'clickmouse.update'
-    if update_cache_path.exists():
-        with open(update_cache_path, 'r', encoding='utf-8') as f:
-            cache = json.load(f)
-        return cache
-    else:
-        logger.warning('Update cache file not found, will create a new one.', extra={'service_id': service})
-        with open(update_cache_path, 'w', encoding='utf-8') as f:
-            f.write('{}')
-        return {}
-
-@logger.auto_logger('clickmouse.update')
-def save_update_cache(**kwargs):
-    '''写入更新缓存文件'''
-    cache_data = {
-        'last_check_time': time(),
-        **kwargs
-    }
-
-    with open(update_cache_path, 'w', encoding='utf-8') as f:
-        json.dump(cache_data, f)
-
-@logger.auto_logger('clickmouse.update')
-def should_check_update():
-    '''
-    检查是否应该检查更新
-    '''
-    last_check_time = update_cache.get('last_check_time')
-    if not last_check_time:
-        return True
-    last_check_time_stamp = datetime.fromtimestamp(last_check_time)
-    now = datetime.now()
-    
-    setting_time = setting_value.update_frequency
-    time = 9
-    
-    match setting_time:
-        case 0: # 每次打开都启动
-            return True
-        case 1: # 每天检查一次
-            time = 3600 * 24
-        case 2: # 每周检查一次
-            time = 3600 * 24 * 7
-        case 3: # 每月检查一次
-            time = 3600 * 24 * 30
-    
-    if (now - last_check_time_stamp).total_seconds() > time:
-        return True
-    return False
-
-@logger.auto_logger('clickmouse.setting')
+@service_logger.auto_logger('settings')
 def save_settings():
     '''
     保存设置
@@ -126,7 +77,7 @@ def save_settings():
     with open(data_path / 'settings.json', 'w', encoding='utf-8') as f:
         json.dump(settings, f)
 
-@logger.auto_logger('clickmouse.ipk.main')
+@service_logger.auto_logger('ipk.main')
 def get_packages():
     lang_index = [] # 语言包索引
     show = []
@@ -147,114 +98,12 @@ def get_application_instance():
         app = QApplication(sys.argv)
     return app
 
-@logger.auto_logger('clickmouse.setting.hotkeyManager', level=logging.DEBUG)
-def all_in_list(list1, list2):
-    if len(list1) != len(list2):
-        return False
-    return all(item in list2 for item in list1)
-
-@logger.auto_logger('clickmouse.ipk.main')
+@service_logger.auto_logger('ipk.main')
 def import_package(package_id: str):
     for i in packages_info:
         if i['package_name'] == package_id:
             return i
     raise ValueError(f'包名 {package_id} 不存在')
-
-@logger.auto_logger('clickmouse.colorGetter', level=logging.DEBUG)
-def get_windows_accent_color():
-    '''读取Windows强调色'''
-    # 主题色存储在 HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\DWM
-    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'SOFTWARE\Microsoft\Windows\DWM')
-
-    # 读取 AccentColor 值（DWORD类型）
-    accent_color, _ = winreg.QueryValueEx(key, 'AccentColor')
-    winreg.CloseKey(key)
-
-    # 转换为RGB格式（注册表中的顺序是ABGR）
-    r = accent_color & 0xFF # R通道
-    b = (accent_color >> 16) & 0xFF # B通道
-    g = (accent_color >> 8) & 0xFF # G通道
-
-    r_str = f'{r:02x}'.zfill(2)
-    g_str = f'{g:02x}'.zfill(2)
-    b_str = f'{b:02x}'.zfill(2)
-
-    # 通常我们使用RGB格式，忽略Alpha通道
-    return f'#{r_str}{g_str}{b_str}'
-
-@logger.auto_logger('clickmouse.colorGetter')
-def lighten_color_hex(hex_color, factor):
-    '''
-    使用HSL色彩空间提亮颜色
-    hex_color: 十六进制颜色字符串，如 "#808080"
-    factor: 提亮因子 (-1-1之间)，0为不变，1为最亮，-1为最暗
-    '''
-
-    if not hex_color.startswith('#') or len(hex_color) != 7:
-        raise ValueError('Please enter a valid hex color string, such as #FF0000.')
-
-    if not -1 <= factor <= 1:
-        raise ValueError('The lightening factor must be between -1 and 1.')
-
-    # 移除#号并转换为RGB
-    hex_color = hex_color.lstrip('#')
-    r = int(hex_color[0:2], 16) / 255.0
-    g = int(hex_color[2:4], 16) / 255.0
-    b = int(hex_color[4:6], 16) / 255.0
-
-    # 转换为HSL
-    h, l, s = colorsys.rgb_to_hls(r, g, b)
-
-    if factor >= 0:
-        # 提亮：向白色(1.0)移动
-        l = l + (1.0 - l) * factor
-    else:
-        # 变暗：向黑色(0.0)移动
-        factor_abs = abs(factor)  # 取绝对值
-        l = l * (1.0 - factor_abs)
-
-    # 转回RGB
-    r, g, b = colorsys.hls_to_rgb(h, l, s)
-
-    # 转换回十六进制
-    hex_result = '#{:02x}{:02x}{:02x}'.format(
-        int(r * 255), 
-        int(g * 255), 
-        int(b * 255)
-    )
-
-    return hex_result
-
-@logger.auto_logger('clickmouse.setting.startupManager')
-def datetime_to_filetime(dt_utc: datetime):
-    '''
-    将datetime对象转换为FILETIME（64位整数）
-    输入必须是UTC时间
-    '''
-    # FILETIME纪元：1601-01-01 00:00:00 UTC
-    filetime_epoch = datetime(1601, 1, 1, tzinfo=pytz.UTC)
-
-    # 计算时间差（微秒精度）
-    delta = dt_utc - filetime_epoch
-
-    # 转换为100纳秒间隔数
-    # 1秒 = 10,000,000个100纳秒间隔
-    filetime_units = delta.total_seconds() * 1e7
-
-    return int(filetime_units)
-
-@logger.auto_logger('clickmouse.setting.startupManager')
-def get_now_filetime():
-    '''
-    获取当前UTC时间对应的FILETIME值
-    '''
-    # 获取当前UTC时间
-    now_utc = datetime.now(pytz.UTC)
-    # 转换为FILETIME
-    filetime_value = datetime_to_filetime(now_utc)
-    # 将整数转换为小端字节序（8字节）
-    little_endian = struct.pack('<Q', filetime_value)
-    return little_endian
 
 @logger.auto_logger('clickmouse.setting.ui')
 def on_update_setting_window():
@@ -272,91 +121,7 @@ def on_update_setting_window():
         setting_window.switch_page(page)
         setting_window.show()
 
-@logger.auto_logger('clickmouse.setting.hotkeyManager', level=logging.DEBUG)
-def format_keys(keys_str_list, source=False):
-    '''将 pynput 的键字符串转换为用户友好的形式'''
-    # 示例：去掉 'Key.' 前缀，并将特殊键首字母大写
-    friendly_keys = []
-    for k in keys_str_list:
-        if k.startswith('Key.'):
-            name = k[4:]  # 去掉 'Key.'
-            # 处理常见的修饰键名称
-            if name.endswith('_l') or name.endswith('_r'):
-                name = name[:-2]  # 去掉 _l/_r
-            elif name.endswith('_gr'):
-                name = name[:-3]  # 去掉 _gr
-            elif name == 'cmd': # 系统键
-                name = 'Win'
-            elif '_' in name:  # 其他修饰键
-                name = name.replace('_', '')
-            friendly_keys.append(name.capitalize())
-        elif k.startswith("'\\x") and k.endswith("'"): # ctrl的热键
-            code = int(k[3:-1], 16)
-            friendly_keys.append(chr(code + 64)) # \x01 -> A
-        elif k.startswith('<') and k.endswith('>'): # ctrl+alt的热键
-            code = int(k[1:-1])
-            if code > 90:  # 非字母
-                if code == 192: # `
-                    code = 96 # 实际的 ASCII 码
-                elif code == 186: # ;
-                    code = 59 # 实际的 ASCII 码
-                elif code == 222: # "
-                    code = 34 # 实际的 ASCII 码
-                elif 96 <= code <= 105: # num区域键
-                    code -= 48 # 实际的 ASCII 码位移
-                elif 106 <= code <= 111: # 运算符的Num区域键
-                    code -= 64 # 实际的 ASCII 码位移
-                else:
-                    code -= 144  # 去掉 144 偏移
-            if code < 0x20: # 不可见字符
-                friendly_keys.append(f'<{code}>')
-            else:
-                friendly_keys.append(chr(code)) # <65> -> A
-        elif ((k.startswith("'") and k.endswith("'"))
-            or(k.startswith('"') and k.endswith('"'))): # 单个字符
-            if k == "'\\\\'": # 反斜杠
-                friendly_keys.append('\\')
-            else:
-                friendly_keys.append(k[1:-1].upper())
-        else:
-            # 普通字符键直接保留
-            friendly_keys.append(k)
-    out_list = list(dict.fromkeys(friendly_keys)) # 去重
-    if source:
-        return out_list
-    priority = {'Win': 1, 'Ctrl': 2, 'Alt': 3, 'Shift': 4} # 按优先级排序
-    def get_priority(key):
-        if key in priority:
-            return priority[key]
-        elif len(key) == 1:   # 单个字符（字母、数字、符号等）
-            return 6
-        else:                 # 其他多字符键
-            return 5
-    return '+'.join(sorted(out_list, key=get_priority)) # 按优先级排序并连接
-
-@logger.auto_logger('clickmouse.setting.hotkeyManager')
-def get_hotkey_listener_instance():
-    '''获取全局唯一的 HotkeyListener 实例'''
-    if not hasattr(get_hotkey_listener_instance, "instance"):
-        global hotkey_thread # 驻留线程，防止自动销毁
-        get_hotkey_listener_instance.instance = HotkeyListener()
-        
-        logger.info('Starting hotkey listener.', extra={'service_id': 'clickmouse.setting.hotkeyManager'})
-        # 在后台线程中启动热键监听
-        hotkey_thread = QtThread(get_hotkey_listener_instance.instance.start_listening)
-        hotkey_thread.start()
-    return get_hotkey_listener_instance.instance
-
-@logger.auto_logger('clickmouse.update')
-def revert_update():
-    '''回滚更新'''
-    try:os.rename('updater.old', 'updater')
-    except:pass
-
-    try:os.remove('updater/clickmouse.7z')
-    except:pass
-
-@logger.auto_logger('clickmouse.main.ui', level=logging.DEBUG)
+@logger.auto_logger('main.ui', level=logging.DEBUG)
 def on_input_change(*, type:str ):
     '''输入延迟改变'''
     # 判断参数有效性
@@ -390,7 +155,7 @@ def on_input_change(*, type:str ):
 
     def on_delay_error(error_text=get_lang('14')):
         '''输入延迟错误'''
-        logger.debug(f'Input delay error: {error_text}', extra={'service_id': 'clickmouse.main.ui'})
+        logger.debug(f'Input delay error: {error_text}')
         total.setText(f'{get_lang('2c')}: {error_text}')
         if type == InputChange.main_window:
             global is_error
@@ -510,7 +275,7 @@ def on_input_change(*, type:str ):
         on_input_change(type=InputChange.main_window) # 刷新主窗口
     return 0
 
-@logger.auto_logger('clickmouse.main')
+@logger.auto_logger('main')
 def open_url(url, width:int=None, height:int=None, fixed:bool=False):
     if dev_flags.get('inline_website'):
         webview.show(url, width, height, fixed)
@@ -518,57 +283,83 @@ def open_url(url, width:int=None, height:int=None, fixed:bool=False):
         from webbrowser import open as open_webbrowser
         open_webbrowser(url)
 
-class UMainWindow(QMainWindow):
+def _connect_titlebar_theme(window):
+    '''连接主题变化信号（重复 show 时不会重复连接）'''
+    if getattr(window, '_titlebar_connected', False):
+        return
+    color_getter.style_changed.connect(window.func)
+    window._titlebar_connected = True
+
+def _disconnect_titlebar_theme(window):
+    '''断开主题变化信号（未连接或窗口已关闭时安全返回）'''
+    if not getattr(window, '_titlebar_connected', False):
+        return
+    try:
+        color_getter.style_changed.disconnect(window.func)
+    except RuntimeError:
+        pass
+    window._titlebar_connected = False
+
+class UMainWindow(GlassMainWindow):
     '''自定义窗口基类'''
     def __init__(self):   
-        logger.info('Initializing window.', extra={'service_id': 'clickmouse.ui'})
+        widget_logger.info('Initializing BaseWindow.')
         super().__init__()
 
         self.setWindowIcon(icon)
         self.func = lambda: color_getter.apply_titleBar(self)
+        self._titlebar_connected = False
+
+        if not dev_flags.get('transparent_visual', False):
+            self.setConfig(energy_saving=True)
 
         self.addtional_local_value = {'self': self}
-        logger.info('Window initialized.', extra={'service_id': 'clickmouse.ui'})
-    
-    @logger.auto_logger('clickmouse.ui', ['UMainWindow'])
+
+        widget_logger.info('Initializing BaseWindow Success.')
+
+    @widget_logger.auto_logger()
     def showEvent(self, event):
         '''窗口显示事件'''
-        color_getter.style_changed.connect(self.func)
+        _connect_titlebar_theme(self)
         QTimer.singleShot(setting_value.soft_delay, self.func)
         return super().showEvent(event)
-    
-    @logger.auto_logger('clickmouse.ui', ['UMainWindow'])
+
+    @widget_logger.auto_logger()
     def closeEvent(self, event):
         '''窗口关闭事件'''
-        color_getter.style_changed.disconnect(self.func)
+        _disconnect_titlebar_theme(self)
         return super().closeEvent(event)
 
-class UDialog(QDialog):
+class UDialog(GlassDialog):
     '''自定义对话框基类'''
     def __init__(self):
-        logger.debug('Initializing window.', extra={'service_id': 'clickmouse.ui'})
+        widget_logger.info('Initializing BaseWindow.')
 
         super().__init__()
         self.setWindowIcon(icon)
         self.func = lambda: color_getter.apply_titleBar(self)
+        self._titlebar_connected = False
+
+        if not dev_flags.get('transparent_visual', False):
+            self.setConfig(energy_saving=True)
 
         self.addtional_local_value = {'self': self}
-
-        logger.debug('Window initialized.', extra={'service_id': 'clickmouse.ui'})  
+        widget_logger.info('Initializing BaseWindow Success.')
     
-    @logger.auto_logger('clickmouse.ui', ['UDialog'])
+    @widget_logger.auto_logger()
     def showEvent(self, event):
         '''窗口显示事件'''
-        color_getter.style_changed.connect(self.func)
+        _connect_titlebar_theme(self)
         QTimer.singleShot(setting_value.soft_delay, self.func)
         return super().showEvent(event)
     
-    @logger.auto_logger('clickmouse.ui', ['UDialog'])
+    @widget_logger.auto_logger()
     def closeEvent(self, event):
         '''窗口关闭事件'''
-        color_getter.style_changed.disconnect(self.func)
+        _disconnect_titlebar_theme(self)
         return super().closeEvent(event)
-    
+
+@widget_logger.auto_logger_for_class('webview')
 class UWebView(UMainWindow):
     def __init__(self):
         super().__init__()
@@ -576,16 +367,17 @@ class UWebView(UMainWindow):
             Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint
         ) # 设置窗口属性
         self.web = QWebEngineView()
+
         self.setCentralWidget(self.web)
         self.web.titleChanged.connect(self.onTitleChanged)
 
-    @logger.auto_logger('clickmouse.webview.ui', ['UWebView'])
     def onTitleChanged(self, title):
         '''窗口标题改变事件'''
         self.setWindowTitle(title)
 
-    @logger.auto_logger('clickmouse.webview.ui', ['UWebView'])
     def show(self, url, width:int=None, height:int=None, fixed:bool=False):
+        self.setWindowTitle('ClickMouse Webview')
+
         _width = width if width is not None  else 640
         _height = height if height is not None  else 480
         if color_getter.is_dark_mode:
@@ -607,7 +399,8 @@ class UWebView(UMainWindow):
         '''窗口关闭事件'''
         self.web.setUrl(QUrl('about:blank')) # 隐藏网页
         return super().closeEvent(event)
-    
+
+@widget_logger.auto_logger_for_class('MessageBox')
 class MessageBox(UMessageBox):
     def __init__(self, parent: QWidget | None, title: str, text: str, icon: MessageIcon, buttons: MessageButton, defaultButton: MessageButton):
         super().__init__(parent, title, text, icon, buttons, defaultButton)
@@ -619,81 +412,16 @@ class MessageBox(UMessageBox):
             if button == self.defaultButton:
                 set_style(button, StyleClass.selected)
 
-    @logger.auto_logger('clickmouse.ui', ['MessageBox'])
     def showEvent(self, event):
         color_getter.style_changed.connect(self.func)
         evt = super().showEvent(event)
         QTimer.singleShot(setting_value.soft_delay, self.func)
         return evt
-    
-    @logger.auto_logger('clickmouse.ui', ['MessageBox'])
+
     def done(self, result):
         '''关闭对话框时执行'''
         color_getter.style_changed.disconnect(self.func)
         return super().done(result)
-
-class StartManager(QObject):
-    '''开机自启动管理器'''
-    updated = Signal(bool)
-
-    def __init__(self):
-        super().__init__()
-        logger.info('Starting startup manager.', extra={'service_id': 'clickmouse.setting.startupManager'})
-        self.app_name = 'clickmouse.lnk'
-        self.status_path = r'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder'
-        self.create_reg()
-        self.auto_start = self.is_enabled()
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.check_value)
-        self.timer.start(setting_value.soft_delay)
-        logger.info('Startup manager initialized.', extra={'service_id': 'clickmouse.setting.startupManager'})
-
-    @logger.auto_logger('clickmouse.setting.startupManager', ['StartManager'], start_extra_text='Startup folder`s shortcut is not found')
-    def create_reg(self):
-        '''检查是否已启用开机自启动'''
-        start_path = Path(os.environ['APPDATA'], 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', self.app_name)
-        if not(start_path.exists()):
-            logger.warning('Startup folder`s shortcut is not found,creating shortcut.', extra={'service_id': 'clickmouse.setting.startupManager'})
-            create_shortcut(str(start_path), str(Path.cwd() / 'main.exe') + ' --quiet', 'ClickMouse', work_dir=str(Path.cwd()))
-            self.disable()
-        else:
-            logger.info('Startup folder`s shortcut is found.', extra={'service_id': 'clickmouse.setting.startupManager'})  
-    
-    @logger.auto_logger('clickmouse.setting.startupManager', ['StartManager'], level=logging.DEBUG)
-    def is_enabled(self):
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.status_path, 0, winreg.KEY_READ) as key:
-                logger.debug('Try to read value from registry..', extra={'service_id': 'clickmouse.setting.startupManager'})
-                value, _ = winreg.QueryValueEx(key, self.app_name)
-
-            return value[0] == 2
-        except FileNotFoundError:
-            logger.warning('Registry path not found.', extra={'service_id': 'clickmouse.setting.startupManager'})
-            return False
-
-    @logger.auto_logger('clickmouse.setting.startupManager', ['StartManager'], level=logging.DEBUG)  
-    def check_value(self):
-        '''检查注册表值是否更新'''
-        new_value = self.is_enabled()
-        if new_value != self.auto_start:
-            self.auto_start = new_value
-            self.updated.emit(self.auto_start)
-            logger.info('Startup value updated.', extra={'service_id': 'clickmouse.setting.startupManager'})
-
-    @logger.auto_logger('clickmouse.setting.startupManager', ['StartManager'], start_extra_text='Enable startup.')  
-    def enable(self):
-        '''启用开机自启动'''
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
-                            self.status_path, 0, winreg.KEY_WRITE) as key:
-            winreg.SetValueEx(key, self.app_name, 0, winreg.REG_BINARY, bytes([0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]))
-
-    @logger.auto_logger('clickmouse.setting.startupManager', ['StartManager'], start_extra_text='Disable startup.')  
-    def disable(self):
-        '''禁用开机自启动''' 
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
-                            self.status_path, 0, winreg.KEY_WRITE) as key:
-            winreg.SetValueEx(key, self.app_name, 0, winreg.REG_BINARY, bytes([0x03, 0x00, 0x00, 0x00]) + get_now_filetime())
         
 class UHotkeyLineEdit(QLineEdit):
     '''能够捕获热键组合的输入框，只有获得焦点时才更新'''
@@ -728,58 +456,8 @@ class UHotkeyLineEdit(QLineEdit):
 
     def on_combination_pressed(self, keys_str_list):
         '''处理组合键信号，将列表格式化为字符串并显示'''
-        self.key_list = format_keys(keys_str_list)
+        self.key_list = HotkeyListener.format_keys(keys_str_list)
         self.setText(self.key_list)
-
-class HotkeyListener(QObject):
-    '''热键监听器类，用于在后台线程中监听全局热键'''
-    combination_pressed = Signal(list)  # 新增信号，用于发送组合键信息
-
-    def __init__(self):
-        super().__init__()
-        logger.info('Initializing hotkey listener.', extra={'service_id': 'clickmouse.setting.hotkeyManager'})
-        self.listener = None
-        self.is_listening = False
-        self.clicked_keys = set()  # 用于跟踪当前按下的键
-
-    @logger.auto_logger('clickmouse.setting.hotkeyManager', ['HotkeyListener'])
-    def start_listening(self):
-        '''开始监听热键''' 
-        if self.is_listening:
-            return
-
-        self.is_listening = True
-        # 创建键盘监听器，同时监听按下和释放事件
-        self.listener = keyboard.Listener(
-            on_press=self.on_key_press,
-            on_release=self.on_key_release
-        )
-        self.listener.daemon = True  # 设置为守护线程
-        self.listener.start()
-
-    @logger.auto_logger('clickmouse.setting.hotkeyManager', ['HotkeyListener'])
-    def stop_listening(self):
-        '''停止监听热键'''
-        if self.listener and self.is_listening:
-            self.is_listening = False
-            self.listener.stop()
-
-    def on_key_press(self, key):
-        '''处理按键按下事件'''
-        # 将按下的键添加到集合中
-        self.clicked_keys.add(key)
-
-        self.combination()
-
-    def on_key_release(self, key):
-        '''处理按键释放事件'''
-        # 从集合中移除释放的键
-        if key in self.clicked_keys:
-            self.clicked_keys.remove(key)
-
-    def combination(self):
-        '''发送特定的组合键'''
-        self.combination_pressed.emit(list(map(str, self.clicked_keys)))  # 发送组合键信息
 
 class UFrame(QFrame):
     def __init__(self, parent=None):
@@ -788,6 +466,295 @@ class UFrame(QFrame):
         self.setFrameShape(UFrame.Shape.HLine)
         set_style(self, StyleClass.frame)
 
+@service_logger.auto_logger_for_class('StartManager')
+class StartManager(QObject):
+    '''开机自启动管理器'''
+    updated = Signal(bool)
+
+    def __init__(self):
+        super().__init__()
+        self.app_name = 'clickmouse.lnk'
+        self.status_path = r'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder'
+        self.create_reg()
+        self.auto_start = self.is_enabled()
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_value)
+        self.timer.start(setting_value.soft_delay)
+
+    def create_reg(self):
+        '''检查是否已启用开机自启动'''
+        start_path = Path(os.environ['APPDATA'], 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', self.app_name)
+        if not(start_path.exists()):
+            service_logger.warning('Startup folder`s shortcut is not found,creating shortcut.')
+            create_shortcut(str(start_path), str(Path.cwd() / 'main.exe') + ' --quiet', 'ClickMouse', work_dir=str(Path.cwd()))
+            self.disable()
+        else:
+            service_logger.info('Startup folder`s shortcut is found.')  
+
+    @service_logger.auto_logger('StartManager', level=logging.DEBUG)
+    def is_enabled(self):
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.status_path, 0, winreg.KEY_READ) as key:
+                service_logger.debug('Try to read value from registry..')
+                value, _ = winreg.QueryValueEx(key, self.app_name)
+
+            return value[0] == 2
+        except FileNotFoundError:
+            service_logger.warning('Registry path not found.')
+            return False
+
+    @service_logger.auto_logger('StartManager', level=logging.DEBUG)
+    def check_value(self):
+        '''检查注册表值是否更新'''
+        new_value = self.is_enabled()
+        if new_value != self.auto_start:
+            self.auto_start = new_value
+            self.updated.emit(self.auto_start)
+            service_logger.info('Startup value updated.')
+
+    def enable(self):
+        '''启用开机自启动'''
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                            self.status_path, 0, winreg.KEY_WRITE) as key:
+            winreg.SetValueEx(key, self.app_name, 0, winreg.REG_BINARY, bytes([0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]))
+
+    def disable(self):
+        '''禁用开机自启动''' 
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
+                            self.status_path, 0, winreg.KEY_WRITE) as key:
+            winreg.SetValueEx(key, self.app_name, 0, winreg.REG_BINARY, bytes([0x03, 0x00, 0x00, 0x00]) + StartManager.get_now_filetime())
+
+    @staticmethod
+    def datetime_to_filetime(dt_utc: datetime):
+        '''
+        将datetime对象转换为FILETIME（64位整数）
+        输入必须是UTC时间
+        '''
+        # FILETIME纪元：1601-01-01 00:00:00 UTC
+        filetime_epoch = datetime(1601, 1, 1, tzinfo=pytz.UTC)
+
+        # 计算时间差（微秒精度）
+        delta = dt_utc - filetime_epoch
+
+        # 转换为100纳秒间隔数
+        # 1秒 = 10,000,000个100纳秒间隔
+        filetime_units = delta.total_seconds() * 1e7
+
+        return int(filetime_units)
+
+    @staticmethod
+    def get_now_filetime():
+        '''
+        获取当前UTC时间对应的FILETIME值
+        '''
+        # 获取当前UTC时间
+        now_utc = datetime.now(pytz.UTC)
+        # 转换为FILETIME
+        filetime_value = StartManager.datetime_to_filetime(now_utc)
+        # 将整数转换为小端字节序（8字节）
+        little_endian = struct.pack('<Q', filetime_value)
+        return little_endian
+
+@service_logger.auto_logger_for_class('update')
+class Updater:
+    @staticmethod
+    def load_update_cache():
+        '''
+        加载更新缓存文件
+        '''
+        if update_cache_path.exists():
+            with open(update_cache_path, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+            return cache
+        else:
+            service_logger.warning('Update cache file not found, will create a new one.')
+            with open(update_cache_path, 'w', encoding='utf-8') as f:
+                f.write('{}')
+            return {}
+
+    @staticmethod
+    def save_update_cache(**kwargs):
+        '''写入更新缓存文件'''
+        cache_data = {
+            'last_check_time': time(),
+            **kwargs
+        }
+
+        with open(update_cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f)
+
+    @staticmethod
+    def should_check_update():
+        '''
+        检查是否应该检查更新
+        '''
+        last_check_time = update_cache.get('last_check_time')
+        if not last_check_time:
+            return True
+        last_check_time_stamp = datetime.fromtimestamp(last_check_time)
+        now = datetime.now()
+        
+        setting_time = setting_value.update_frequency
+        time = 9
+        
+        match setting_time:
+            case 0: # 每次打开都启动
+                return True
+            case 1: # 每天检查一次
+                time = 3600 * 24
+            case 2: # 每周检查一次
+                time = 3600 * 24 * 7
+            case 3: # 每月检查一次
+                time = 3600 * 24 * 30
+        
+        if (now - last_check_time_stamp).total_seconds() > time:
+            return True
+        return False
+
+    @staticmethod
+    def revert_update():
+        '''回滚更新'''
+        try:os.rename('updater.old', 'updater')
+        except:pass
+
+        try:os.remove('updater/clickmouse.7z')
+        except:pass
+
+@service_logger.auto_logger_for_class('hotkeyManager')
+class HotkeyListener(QObject):
+    '''热键监听器类，用于在后台线程中监听全局热键'''
+    combination_pressed = Signal(list)  # 新增信号，用于发送组合键信息
+
+    def __init__(self):
+        super().__init__()
+        self.listener = None
+        self.is_listening = False
+        self.clicked_keys = set()  # 用于跟踪当前按下的键
+
+    def start_listening(self):
+        '''开始监听热键''' 
+        if self.is_listening:
+            return
+
+        self.is_listening = True
+        # 创建键盘监听器，同时监听按下和释放事件
+        self.listener = keyboard.Listener(
+            on_press=lambda key: self.on_key_press(key),
+            on_release=lambda key: self.on_key_release(key), # 二次保险， FIX: ValueError: <bound method HotkeyListener.on_key_press of <__main__.HotkeyListener(0x2a78d06d7c0) at 0x000002A7BF0D6280>>
+        )
+        self.listener.daemon = True  # 设置为守护线程
+        self.listener.start()
+
+    def stop_listening(self):
+        '''停止监听热键'''
+        if self.listener and self.is_listening:
+            self.is_listening = False
+            self.listener.stop()
+
+    @service_logger.auto_logger('hotkeyManager', level=logging.DEBUG)
+    def on_key_press(self, key, *args, **kwargs): # FIX: TypeError: HotkeyListener.on_key_press() takes 2 positional arguments but 3 were given
+        '''处理按键按下事件'''
+        # 将按下的键添加到集合中
+        self.clicked_keys.add(key)
+
+        self.combination()
+
+    @service_logger.auto_logger('hotkeyManager', level=logging.DEBUG)
+    def on_key_release(self, key, *args, **kwargs): # FIX: TypeError: HotkeyListener.on_key_release() takes 2 positional arguments but 3 were given
+        '''处理按键释放事件'''
+        # 从集合中移除释放的键
+        if key in self.clicked_keys:
+            self.clicked_keys.remove(key)
+
+    @service_logger.auto_logger('hotkeyManager', ['HotkeyListener'], level=logging.DEBUG)
+    def combination(self):
+        '''发送特定的组合键'''
+        self.combination_pressed.emit(list(map(str, self.clicked_keys)))  # 发送组合键信息
+
+    @staticmethod
+    @service_logger.auto_logger('hotkeyManager', level=logging.DEBUG)
+    def format_keys(keys_str_list, source=False):
+        '''将 pynput 的键字符串转换为用户友好的形式'''
+        # 示例：去掉 'Key.' 前缀，并将特殊键首字母大写
+        friendly_keys = []
+        for k in keys_str_list:
+            if k.startswith('Key.'):
+                name = k[4:]  # 去掉 'Key.'
+                # 处理常见的修饰键名称
+                if name.endswith('_l') or name.endswith('_r'):
+                    name = name[:-2]  # 去掉 _l/_r
+                elif name.endswith('_gr'):
+                    name = name[:-3]  # 去掉 _gr
+                elif name == 'cmd': # 系统键
+                    name = 'Win'
+                elif '_' in name:  # 其他修饰键
+                    name = name.replace('_', '')
+                friendly_keys.append(name.capitalize())
+            elif k.startswith("'\\x") and k.endswith("'"): # ctrl的热键
+                code = int(k[3:-1], 16)
+                friendly_keys.append(chr(code + 64)) # \x01 -> A
+            elif k.startswith('<') and k.endswith('>'): # ctrl+alt的热键
+                code = int(k[1:-1])
+                if code > 90:  # 非字母
+                    if code == 192: # `
+                        code = 96 # 实际的 ASCII 码
+                    elif code == 186: # ;
+                        code = 59 # 实际的 ASCII 码
+                    elif code == 222: # "
+                        code = 34 # 实际的 ASCII 码
+                    elif 96 <= code <= 105: # num区域键
+                        code -= 48 # 实际的 ASCII 码位移
+                    elif 106 <= code <= 111: # 运算符的Num区域键
+                        code -= 64 # 实际的 ASCII 码位移
+                    else:
+                        code -= 144  # 去掉 144 偏移
+                if code < 0x20: # 不可见字符
+                    friendly_keys.append(f'<{code}>')
+                else:
+                    friendly_keys.append(chr(code)) # <65> -> A
+            elif ((k.startswith("'") and k.endswith("'"))
+                or(k.startswith('"') and k.endswith('"'))): # 单个字符
+                if k == "'\\\\'": # 反斜杠
+                    friendly_keys.append('\\')
+                else:
+                    friendly_keys.append(k[1:-1].upper())
+            else:
+                # 普通字符键直接保留
+                friendly_keys.append(k)
+        out_list = list(dict.fromkeys(friendly_keys)) # 去重
+        if source:
+            return out_list
+        priority = {'Win': 1, 'Ctrl': 2, 'Alt': 3, 'Shift': 4} # 按优先级排序
+        def get_priority(key):
+            if key in priority:
+                return priority[key]
+            elif len(key) == 1:   # 单个字符（字母、数字、符号等）
+                return 6
+            else:                 # 其他多字符键
+                return 5
+        return '+'.join(sorted(out_list, key=get_priority)) # 按优先级排序并连接
+
+    @staticmethod
+    def get_hotkey_listener_instance():
+        '''获取全局唯一的 HotkeyListener 实例'''
+        if not hasattr(HotkeyListener.get_hotkey_listener_instance, "instance"):
+            global hotkey_thread # 驻留线程，防止自动销毁
+            HotkeyListener.get_hotkey_listener_instance.instance = HotkeyListener()
+            
+            # 在后台线程中启动热键监听
+            hotkey_thread = QtThread(HotkeyListener.get_hotkey_listener_instance.instance.start_listening)
+            hotkey_thread.start()
+        return HotkeyListener.get_hotkey_listener_instance.instance
+
+    @staticmethod
+    @service_logger.auto_logger('hotkeyManager', level=logging.DEBUG)
+    def all_in_list(list1, list2):
+        if len(list1) != len(list2):
+            return False
+        return all(item in list2 for item in list1)
+
+@service_logger.auto_logger_for_class('clicker')
 class Click(QObject):
     pause = Signal(bool)
     click_changed = Signal(bool, bool)
@@ -797,25 +764,22 @@ class Click(QObject):
 
     def __init__(self):
         super().__init__()
-        logger.info('Initializing clicker.', extra={'service_id': 'clickmouse.clicker'})
+
         self.running = False
         self.paused = False
         self.click_thread = None
         self.right_clicked = False
         self.left_clicked = False
 
-    @logger.auto_logger('clickmouse.clicker', ['Click'])
     def mouse_left(self, delay, times):
         if not self.running:
             self.mouse_click(button='left', input_delay=delay, times=times)
 
-    @logger.auto_logger('clickmouse.clicker', ['Click'])
     def mouse_right(self, delay, times):
         # 停止当前运行的点击线程
         if not self.running:
             self.mouse_click(button='right', input_delay=delay, times=times)
 
-    @logger.auto_logger('clickmouse.clicker', ['Click'], start_extra_text='Start clicker.')
     def mouse_click(self, button: str, input_delay, times):
         '''鼠标连点'''
         # 重置状态
@@ -844,16 +808,16 @@ class Click(QObject):
 
         # 判断参数有效性
         try:
-            logger.debug(f'Clicking {button} with delay {input_delay} and times {times}')
+            service_logger.debug(f'Clicking {button} with delay {input_delay} and times {times}')
             delay = math.ceil(float(input_delay))
         except Exception:
             trace = format_exc()  # 获取异常堆栈跟踪信息
             MessageBox.critical(None, get_lang('14'), f'{get_lang('1b')}\n{trace}')
-            logger.exception('clickmouse.clicker')
+            service_logger.exception('clickmouse.clicker')
             return
 
         # 创建独立线程避免阻塞GUI
-        @logger.auto_logger('clickmouse.clicker', ['Click'])
+        @logger.auto_logger('clickmouse.clicker')
         def click_loop():
             self.pause.emit(False)
             i = 0
@@ -864,7 +828,7 @@ class Click(QObject):
                     break
                 if not self.paused:
                     try:
-                        logger.debug('Clicking.')
+                        service_logger.debug('Clicking.')
                         if times == float('inf'):   
                             self.click_conuter.emit('inf', str(i), str(delay))
                         else:
@@ -875,7 +839,7 @@ class Click(QObject):
                     except Exception:
                         trace = format_exc()
                         MessageBox.critical(None, get_lang('14'), f'{get_lang('1b')}\n{trace}')
-                        logger.exception('clickmouse.clicker', trace)
+                        service_logger.exception('clickmouse.clicker', trace)
 
                         self.stopped.emit()
                         break
@@ -885,82 +849,76 @@ class Click(QObject):
                 self.stopped.emit()
 
         # 启动线程
-        logger.info(f'Starting click thread')
+        service_logger.info(f'Starting click thread')
         self.started.emit()
         self.click_thread = QtThread(click_loop)
         self.click_thread.start()
 
-    @logger.auto_logger('clickmouse.clicker', ['Click'])
     def pause_click(self):
         if self.paused:
-            logger.info('Clicker resumed')
+            service_logger.info('Clicker resumed')
         else:
-            logger.info('Clicker paused')
+            service_logger.info('Clicker paused')
         self.paused = not self.paused
         self.pause.emit(self.paused)
 
+@service_logger.auto_logger_for_class('refresh')
 class Refresh:
     def __init__(self):
-        logger.info('Initializing refresh service', extra={'service_id': 'clickmouse.refresh'})
         self.steps = [
             self.refresh_title,
             self.left_check,
             self.right_check,
         ]
 
-    @logger.auto_logger('clickmouse.refresh', ['Refresh'])
     def run(self):
         self.do_step(self.steps)
     
-    @logger.auto_logger('clickmouse.refresh', ['Refresh'])
     def do_step(self, codes):
         # 尝试执行代码
         for code in codes:
             try:
-                logger.info(f'Running function: Refresh.{code.__name__}', extra={'service_id': 'clickmouse.refresh'})
+                service_logger.info(f'Running function: Refresh.{code.__name__}', extra={'service_id': 'clickmouse.refresh'})
                 code()
-                logger.info(f'Function {code.__name__} running successfull.')
+                service_logger.info(f'Function {code.__name__} running successfull.')
             except NameError as e:
-                logger.warning(f'Step {code.__name__} not defined: {e}')
+                service_logger.warning(f'Step {code.__name__} not defined: {e}')
             except Exception as e:
-                logger.error(f'Step {code.__name__} Running failed: {e}')
+                service_logger.error(f'Step {code.__name__} Running failed: {e}')
 
     def refresh_title(self):
         QTimer.singleShot(setting_value.soft_delay, lambda: color_getter.style_changed.emit(bool(color_getter.is_dark_mode)))
 
     def left_check(self):
         if clicker.left_clicked:
-            logger.info('Left click is started.')
+            service_logger.info('Left click is started.')
             set_style(main_window.left_click_button, StyleClass.selected)
         else:
-            logger.info('Left click is not started.')
+            service_logger.info('Left click is not started.')
             set_style(main_window.left_click_button, StyleClass.none)
 
     def right_check(self):
         if clicker.right_clicked:
-            logger.info('Right click is started.')
+            service_logger.info('Right click is started.')
             set_style(main_window.right_click_button,StyleClass.selected)
         else:
-            logger.info('Right click is not started.')
+            service_logger.info('Right click is not started.')
             set_style(main_window.right_click_button, StyleClass.none)
 
+@service_logger.auto_logger_for_class('runAfter')
 class RunAfter:
     def __init__(self):
-        logger.info('Initializing run-after service', extra={'service_id': 'clickmouse.runafter'})
         self.program_list = {}
 
-    @logger.auto_logger('clickmouse.runafter', ['RunAfter'])
     def add(self, name, python_path, exe_path, run_as_admin=False):
         self.program_list[name] = (python_path, exe_path, run_as_admin)
         MessageBox.information(main_window, get_lang('59'), get_lang('5a'))
 
-    @logger.auto_logger('clickmouse.runafter', ['RunAfter'])
     def remove(self, name):
         logger.info('Remove run-after plan')
         del self.program_list[name]
         MessageBox.information(main_window, get_lang('59'), get_lang('88'))
 
-    @logger.auto_logger('clickmouse.runafter', ['RunAfter'])
     def run(self):
         for python_path, exe_path, use_admin in self.program_list.values():
             if use_admin:
@@ -968,13 +926,12 @@ class RunAfter:
             else:
                 run_software(python_path, exe_path)
 
+@service_logger.auto_logger_for_class('colorGetter')
 class ColorGetter(QObject):
     style_changed = Signal(bool)
 
     def __init__(self):
         super().__init__()
-
-        logger.info('Initializing color getter.', extra={'service_id': 'clickmouse.colorgetter'})
 
         # 记录当前主题
         self.style = setting_value.select_style
@@ -987,7 +944,7 @@ class ColorGetter(QObject):
             settings['select_style'] = 0
             save_settings()
             MessageBox.critical(None, get_lang('14'), get_lang('12'))
-            logger.critical('Setting style index is out of range, will reset to default.')
+            service_logger.critical('Setting style index is out of range, will reset to default.')
             run_software('main.py', 'main.exe')
             sys.exit(0)
 
@@ -1001,7 +958,73 @@ class ColorGetter(QObject):
 
         self.need_refresh = False
 
-    @logger.auto_logger('clickmouse.colorgetter', ['ColorGetter'], level=logging.DEBUG)
+    @staticmethod
+    @service_logger.auto_logger('colorGetter', level=logging.DEBUG)
+    def get_windows_accent_color():
+        '''读取Windows强调色'''
+        # 主题色存储在 HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\DWM
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'SOFTWARE\Microsoft\Windows\DWM')
+
+        # 读取 AccentColor 值（DWORD类型）
+        accent_color, _ = winreg.QueryValueEx(key, 'AccentColor')
+        winreg.CloseKey(key)
+
+        # 转换为RGB格式（注册表中的顺序是ABGR）
+        r = accent_color & 0xFF # R通道
+        b = (accent_color >> 16) & 0xFF # B通道
+        g = (accent_color >> 8) & 0xFF # G通道
+
+        r_str = f'{r:02x}'.zfill(2)
+        g_str = f'{g:02x}'.zfill(2)
+        b_str = f'{b:02x}'.zfill(2)
+
+        # 通常我们使用RGB格式，忽略Alpha通道
+        return f'#{r_str}{g_str}{b_str}'
+
+    @staticmethod
+    def lighten_color_hex(hex_color, factor):
+        '''
+        使用HSL色彩空间提亮颜色
+        hex_color: 十六进制颜色字符串，如 "#808080"
+        factor: 提亮因子 (-1-1之间)，0为不变，1为最亮，-1为最暗
+        '''
+
+        if not hex_color.startswith('#') or len(hex_color) != 7:
+            raise ValueError('Please enter a valid hex color string, such as #FF0000.')
+
+        if not -1 <= factor <= 1:
+            raise ValueError('The lightening factor must be between -1 and 1.')
+
+        # 移除#号并转换为RGB
+        hex_color = hex_color.lstrip('#')
+        r = int(hex_color[0:2], 16) / 255.0
+        g = int(hex_color[2:4], 16) / 255.0
+        b = int(hex_color[4:6], 16) / 255.0
+
+        # 转换为HSL
+        h, l, s = colorsys.rgb_to_hls(r, g, b)
+
+        if factor >= 0:
+            # 提亮：向白色(1.0)移动
+            l = l + (1.0 - l) * factor
+        else:
+            # 变暗：向黑色(0.0)移动
+            factor_abs = abs(factor)  # 取绝对值
+            l = l * (1.0 - factor_abs)
+
+        # 转回RGB
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+
+        # 转换回十六进制
+        hex_result = '#{:02x}{:02x}{:02x}'.format(
+            int(r * 255), 
+            int(g * 255), 
+            int(b * 255)
+        )
+
+        return hex_result
+
+    @service_logger.auto_logger('colorgetter', ['ColorGetter'], level=logging.DEBUG)
     def load_theme(self):
         theme = None
         windows_theme = None
@@ -1011,56 +1034,56 @@ class ColorGetter(QObject):
         if self.style == 0:
             theme = QApplication.styleHints().colorScheme()
             if theme == Qt.ColorScheme.Dark:
-                logger.debug('Dark theme')
+                service_logger.debug('Dark theme')
                 theme = 'auto-dark'
             elif theme == Qt.ColorScheme.Light:
-                logger.debug('Light theme')
+                service_logger.debug('Light theme')
                 theme = 'auto-light'
 
         windows_theme = QApplication.styleHints().colorScheme()   
         if theme == Qt.ColorScheme.Dark:
-            logger.debug('Dark theme')
+            service_logger.debug('Dark theme')
             windows_theme = 'dark'
         elif theme == Qt.ColorScheme.Light:
-            logger.debug('Light theme')
+            service_logger.debug('Light theme')
             windows_theme = 'light'
 
-        windows_color = get_windows_accent_color()
+        windows_color = ColorGetter.get_windows_accent_color()
         use_windows_color = setting_value.use_windows_color
 
         for k, v in maps.items():
             if v == setting_value.select_style:
-                logger.debug(f'Found theme: {k}')
+                service_logger.debug(f'Found theme: {k}')
                 theme = k
 
         return theme, windows_theme, windows_color, use_windows_color
 
-    @logger.auto_logger('clickmouse.colorgetter', ['ColorGetter'], level=logging.DEBUG)
+    @service_logger.auto_logger('colorgetter', ['ColorGetter'], level=logging.DEBUG)
     def check_and_apply_theme(self):
         '''检查主题是否变化，变化则重新应用'''
-        logger.debug('Check theme')
+        service_logger.debug('Check theme')
 
         self.style = setting_value.select_style
 
         new_theme, new_windows_theme, new_windows_color, new_use_windows_color = self.load_theme()
 
         if new_theme != self.current_theme:
-            logger.info('Theme changed')
+            service_logger.info('Theme changed')
             self.current_theme = new_theme
             self.apply_global_theme()
 
         if new_windows_color != self.windows_color:
-            logger.info('Windows color changed')
+            service_logger.info('Windows color changed')
             self.windows_color = new_windows_color
             self.apply_global_theme()
 
         if new_windows_theme != self.windows_theme:
-            logger.info('Windows theme changed')
+            service_logger.info('Windows theme changed')
             self.windows_theme = new_windows_theme
             self.need_refresh = True 
 
         if new_use_windows_color != self.use_windows_color:
-            logger.info('Windows color changed')
+            service_logger.info('Windows color changed')
             self.use_windows_color = new_use_windows_color
             self.apply_global_theme()
 
@@ -1068,7 +1091,6 @@ class ColorGetter(QObject):
             refresh.run() # 刷新
             self.need_refresh = False
     
-    @logger.auto_logger('clickmouse.colorgetter', ['ColorGetter'])
     def apply_titleBar(self, window: QMainWindow | QDialog):
         '''应用标题栏样式'''
         if not init_success: # 等待初始化完成加载
@@ -1090,50 +1112,53 @@ class ColorGetter(QObject):
 
         return 0
 
-    @logger.auto_logger('clickmouse.colorgetter', ['ColorGetter'])
     def apply_global_theme(self):
         '''根据当前主题，为整个应用设置全局样式表'''
         global select_styles
-
-        app = get_application_instance()
 
         current_theme = self.current_theme.replace('auto-', '')
 
         if not dev_flags.get('new_visual', False): # 使用经典样式
             current_theme += '-old' if current_theme in ['light', 'dark'] else ''
 
+        if dev_flags.get('debugee', False):
+            with open(get_resource_path('styles/debug.qss'), 'r', encoding='utf-8') as f:
+                debug_style = f.read()
+        else:
+            debug_style = ''
+
         select_styles = styles[current_theme]
         
         if self.use_windows_color:
             steps = []
             if select_styles.css_data['.meta']['mode'] == 'dark':
-                accent_color = lighten_color_hex(self.windows_color, 0.4)
+                accent_color = ColorGetter.lighten_color_hex(self.windows_color, 0.4)
                 steps.extend([
                     [['.selected', 'background-color'], accent_color],
-                    [['.selected:hover', 'background-color'], lighten_color_hex(accent_color, -0.1)],
-                    [['.selected:pressed', 'background-color'], lighten_color_hex(accent_color, -0.15)],
-                    [['.selected:pressed', 'color'], lighten_color_hex(accent_color, -0.8)],
-                    [['.selected', 'border'], f'1px solid {lighten_color_hex(accent_color, -0.05)}',],
-                    [['.selected', 'border-bottom-color'], lighten_color_hex(accent_color, -0.15),],
+                    [['.selected:hover', 'background-color'], ColorGetter.lighten_color_hex(accent_color, -0.1)],
+                    [['.selected:pressed', 'background-color'], ColorGetter.lighten_color_hex(accent_color, -0.15)],
+                    [['.selected:pressed', 'color'], ColorGetter.lighten_color_hex(accent_color, -0.8)],
+                    [['.selected', 'border'], f'1px solid {ColorGetter.lighten_color_hex(accent_color, -0.05)}',],
+                    [['.selected', 'border-bottom-color'], ColorGetter.lighten_color_hex(accent_color, -0.15),],
                     [['QCheckBox', 'color'], 'black'],
                     [['QListWidget::item:selected', 'border-left-color'], accent_color],
                 ])
             else:
                 steps.extend([
                     [['.selected', 'background-color'], self.windows_color],
-                    [['.selected', 'border'], f'1px solid {lighten_color_hex(self.windows_color, -0.1)}',],
-                    [['.selected', 'border-bottom-color'], lighten_color_hex(self.windows_color, -0.35),],
-                    [['.selected:pressed', 'background-color'], lighten_color_hex(self.windows_color, 0.3)],
-                    [['.selected:hover', 'background-color'], lighten_color_hex(self.windows_color, 0.2)],
-                    [['.selected:pressed', 'border'], f'1px solid {lighten_color_hex(self.windows_color, 0.1)}',],
-                    [['.selected:pressed', 'border-bottom-color'], lighten_color_hex(self.windows_color, -0.35),],
+                    [['.selected', 'border'], f'1px solid {ColorGetter.lighten_color_hex(self.windows_color, -0.1)}',],
+                    [['.selected', 'border-bottom-color'], ColorGetter.lighten_color_hex(self.windows_color, -0.35),],
+                    [['.selected:pressed', 'background-color'], ColorGetter.lighten_color_hex(self.windows_color, 0.3)],
+                    [['.selected:hover', 'background-color'], ColorGetter.lighten_color_hex(self.windows_color, 0.2)],
+                    [['.selected:pressed', 'border'], f'1px solid {ColorGetter.lighten_color_hex(self.windows_color, 0.1)}',],
+                    [['.selected:pressed', 'border-bottom-color'], ColorGetter.lighten_color_hex(self.windows_color, -0.35),],
                     [['QListWidget::item:selected', 'border-left-color'], self.windows_color],
                 ])
             for step in steps:
                 select_styles = select_styles.replace(step[0], StyleReplaceMode.ALL, step[1], output_json=False)
         
-        logger.debug('Apply theme')
-        app.setStyleSheet(select_styles.css_text)  # 全局应用
+        service_logger.debug('Apply theme')
+        LevelManager.instance().setStyleSheet(select_styles.css_text + debug_style)  # 全局应用
         self.need_refresh = True
         
 class MainWindow(UMainWindow):
@@ -1166,7 +1191,7 @@ class MainWindow(UMainWindow):
     def _set_style(self):
         with open(get_resource_path('styles/dark.qss'), 'r', encoding='utf-8') as f:
             style = f.read()
-        app.app.setStyleSheet(style)
+        LevelManager.instance().setStyleSheet(style)
 
     def init_ui(self):
         # 创建主控件和布局
@@ -1281,7 +1306,7 @@ class MainWindow(UMainWindow):
         central_layout.addWidget(QPushButton())
         central_layout.addLayout(widgetsView)
         central_layout.addStretch()
-        self.setLayout(central_layout)
+        # central_layout 已在创建 central_widget 时安装，QMainWindow 不能再 setLayout
 
         # 按钮信号连接
         logger.debug('Singnal connection')
@@ -1385,7 +1410,7 @@ class MainWindow(UMainWindow):
         central_layout.addLayout(unit_layout)
         central_layout.addWidget(self.total_time_label)
         central_layout.addStretch(1)
-        self.setLayout(central_layout)
+        # central_layout 已在创建 central_widget 时安装，QMainWindow 不能再 setLayout
 
         # 按钮信号连接
         logger.debug('Singnal connection')
@@ -1419,7 +1444,8 @@ class MainWindow(UMainWindow):
                 self.status_bar.showMessage(get_lang('8d'))
 
     def create_menu_bar(self):
-        menu_bar = self.menuBar()
+        menu_bar = GlassMenuBar(self)
+        self.setMenuBar(menu_bar) # 使用透明菜单栏，让玻璃背景透出
 
         # 文件菜单
         file_menu: QMenu = menu_bar.addMenu(get_lang('01'))
@@ -1635,7 +1661,7 @@ class MainWindow(UMainWindow):
     def save(self):
         '''保存更新缓存'''
         if should_check_update_res:
-            save_update_cache(should_update=result[0], latest_version=result[1], hash=result[3], update_version_tag=result[4]) # 缓存最新版本
+            Updater.save_update_cache(should_update=result[0], latest_version=result[1], hash=result[3], update_version_tag=result[4]) # 缓存最新版本
 
     def on_check_update_result(self, check_data):
         '''检查更新结果'''
@@ -2301,7 +2327,7 @@ class UpdateWindow(UDialog):
             except:
                 trace = format_exc()
                 logger.exception('update failed', trace)
-                revert_update()
+                Updater.revert_update()
                 MessageBox.critical(self, get_lang('14'), f'{get_lang('bb')}：\n{trace}')
         else:
             MessageBox.critical(self, get_lang('14'), get_lang('4d'))
@@ -2398,7 +2424,7 @@ class UpdateOKWindow(UDialog):
         '''回滚'''
         global can_update
         logger.info('Revert update')
-        revert_update()
+        Updater.revert_update()
         self.close()
         can_update = False
         MessageBox.information(self, get_lang('16'), get_lang('b9'))
@@ -2519,7 +2545,180 @@ class SettingWindow(SelectUI, UMainWindow):
         self.values.clear()
         
     def get_code(self, id) -> UIWindow:
-        return self.code_list[id+'.gui']
+        return self.code_list[id + '.gui']
+
+    def resolve_requires(self, data, item):
+        """
+        读取 item 的 'requires' 字段，返回其在 data 中对应的 'name' 列表。
+
+        规则:
+        - item 中找不到 'requires' 字段 -> 直接返回 []（退出）
+        - requires 中某个 key 在 data 里找不到 -> 跳过，不添加
+        - 找到 -> 添加该项的 'name'
+
+        :param data: 可查询的源列表（元素为带 key/name/requires 的字典）
+        :param item: 与 data 元素同格式的字典（可以不是 data 中的元素）
+        :return: list[str]
+        """
+        requires = item.get("requires")
+        if requires is None:          # 找不到 requires -> 退出
+            return []
+
+        # 建立 key -> 字典 的索引，O(1) 查找
+        index = {d["key"]: d for d in data if "key" in d}
+
+        result = []
+        for req_key in requires:
+            target = index.get(req_key)
+            if target is not None and "name" in target:   # 找不到就跳过
+                result.append(target["name"])
+        return result
+
+    def resolve_requires_keys(self, data, item):
+        """
+        递归读取 item 的 'requires' 字段，返回其全部依赖的 key（包含多层子依赖）。
+
+        规则:
+        - item 中找不到 'requires' 字段 -> 直接返回 []
+        - requires 中某个 key 在 data 里找不到 -> 跳过，不添加
+        - 已经访问过的 key 不会重复添加，可安全处理重复 / 循环依赖
+
+        :param data: 可查询的源列表（元素为带 key/requires 的字典）
+        :param item: 与 data 元素同格式的字典（可以不是 data 中的元素）
+        :return: list[str]
+        """
+        index = {d["key"]: d for d in data if "key" in d}
+
+        result = []
+        visited = {item.get("key")}
+        pending = list(item.get("requires") or [])
+
+        while pending:
+            req_key = pending.pop(0)
+            if req_key in visited:        # 重复或循环依赖：跳过
+                continue
+            visited.add(req_key)
+
+            target = index.get(req_key)
+            if target is None:            # 找不到就跳过
+                continue
+
+            result.append(req_key)
+            pending.extend(target.get("requires") or [])
+
+        return result
+
+    def enable_required_dev_flags(self, flag_name: str) -> list[str]:
+        """
+        连锁启用 flag_name 在 dev_settings 中声明的全部依赖（包含多层子依赖）。
+
+        已经启用的依赖会被跳过，但其子依赖仍会继续检查。
+        :return: 本次被自动启用的 key 列表
+        """
+        item = self.dev_flag_index.get(flag_name)
+        if item is None:
+            return []
+
+        enabled = []
+        index_items = list(self.dev_flag_index.values())
+        for req_key in self.resolve_requires_keys(index_items, item):
+            toggle = self.dev_flag_toggles.get(req_key)
+            if toggle is None or toggle.isChecked():
+                continue
+
+            # 通过代码修改状态时 ToggleSwitch 也会发出 stateChanged，
+            # 这里阻塞信号，避免重入 on_dev_flag_changed 导致重复保存和重复重启提示。
+            toggle.blockSignals(True)
+            try:
+                toggle.setChecked(True)
+            finally:
+                toggle.blockSignals(False)
+
+            self.save_dev_config(True, req_key)
+            enabled.append(req_key)
+
+        if enabled:
+            logger.info(f'Dev flags linked by {flag_name}: {", ".join(enabled)}')
+        return enabled
+
+    def resolve_dependent_keys(self, flag_name: str) -> list[str]:
+        """
+        返回所有（直接或间接）依赖 flag_name 的 key，即反向依赖闭包。
+
+        例如 dd <- (bb, cc) <- aa，则 resolve_dependent_keys('dd') -> ['bb', 'cc', 'aa']
+        （按发现顺序返回，循环依赖会去重）。
+        """
+        reverse = {}
+        for key, item in self.dev_flag_index.items():
+            for req_key in item.get('requires') or []:
+                reverse.setdefault(req_key, []).append(key)
+
+        result = []
+        visited = {flag_name}
+        pending = list(reverse.get(flag_name, []))
+
+        while pending:
+            key = pending.pop(0)
+            if key in visited:            # 重复或循环依赖：跳过
+                continue
+            visited.add(key)
+
+            result.append(key)
+            pending.extend(reverse.get(key, []))
+
+        return result
+
+    def disable_dependent_dev_flags(self, flag_name: str) -> list[str]:
+        """
+        连锁禁用所有（直接或间接）依赖 flag_name 的开发标志。
+
+        只沿“依赖者”方向关闭，flag_name 自身依赖的节点不受影响。
+        已经关闭的依赖者会被跳过，但其下游依赖者仍会继续检查。
+        :return: 本次被自动禁用的 key 列表
+        """
+        if flag_name not in self.dev_flag_index:
+            return []
+
+        disabled = []
+        for dependent_key in self.resolve_dependent_keys(flag_name):
+            toggle = self.dev_flag_toggles.get(dependent_key)
+            if toggle is None or not toggle.isChecked():
+                continue
+
+            # 同 enable_required_dev_flags：阻塞信号，避免重入 on_dev_flag_changed
+            toggle.blockSignals(True)
+            try:
+                toggle.setChecked(False)
+            finally:
+                toggle.blockSignals(False)
+
+            self.save_dev_config(False, dependent_key)
+            disabled.append(dependent_key)
+
+        if disabled:
+            logger.info(f'Dev flags disabled with {flag_name}: {", ".join(disabled)}')
+        return disabled
+
+    def on_dev_flag_changed(self, checked: bool, flag_name: str):
+        '''开发标志状态改变事件：保存状态，并按依赖关系连锁启用 / 禁用相关开关。'''
+        self.save_dev_config(checked, flag_name)
+
+        if checked:
+            # 启用：同时启用 requires 声明的全部依赖（含多层子依赖）
+            changed = self.enable_required_dev_flags(flag_name)
+        else:
+            # 禁用：同时禁用所有（直接或间接）依赖它的标志，但不影响它自己依赖的标志
+            changed = self.disable_dependent_dev_flags(flag_name)
+
+        # 只有开关自身或本次连锁变化的标志需要重启时才提示，避免一次操作弹出多个重启提示
+        needs_restart = self.dev_flag_index.get(flag_name, {}).get('need_restart', False)
+        if not needs_restart:
+            needs_restart = any(
+                self.dev_flag_index.get(key, {}).get('need_restart', False)
+                for key in changed
+            )
+        if needs_restart:
+            self.restart_ask()
 
     def create_page(self, title):
         logger.info(f'Loading setting page: {title}')
@@ -2673,7 +2872,7 @@ class SettingWindow(SelectUI, UMainWindow):
                 ):
                     # 设置元件
                     input = UHotkeyLineEdit()
-                    input.setText(format_keys(hotkey))
+                    input.setText(HotkeyListener.format_keys(hotkey))
                     repair_button = QPushButton(get_lang('20')) # 还原默认设置按钮
 
                     if not enabled:
@@ -2787,28 +2986,57 @@ class SettingWindow(SelectUI, UMainWindow):
                 self.on_warning_update(self.start_warning.isChecked())
             case self.page_flags:
                 set_content_label(get_lang('d4'))
+
+                if dev_flags.get('new_visual', False):
+                    layout.setSpacing(8)
                 
                 if not dev_settings:
                     layout.addWidget(QLabel('No dev settings found.'))
                 else:
+                    # 开发标志索引：key -> dev_settings 中的配置项
+                    self.dev_flag_index = {i['key']: i for i in dev_settings if 'key' in i}
+                    # 开发标志开关索引：key -> 开关控件，供连锁修改依赖状态时同步 UI
+                    self.dev_flag_toggles = {}
+
                     for i in dev_settings:
-                        checkbox = UCheckBox(i['name'])
-                        if i.get('need_restart', False):
-                            checkbox.checkStateChanged.connect(lambda chk,idx=i['key']:(self.save_dev_config(chk, idx),self.window_restarted.emit(),))
+                        if dev_flags.get('new_visual', False):
+                            widget: DevFlagCard = DevFlagCard(
+                                title = None,
+                                subtitle = i['name'],
+                                code = i['key'],
+                                description = i['desc'],
+                                items = self.resolve_requires(dev_settings, i),
+                                needs_restart = i.get('need_restart', False),
+                            )
+
+                            toggle_switch = widget.toggle_switch()
+                            toggle_switch.setChecked(dev_flags.get(i['key'], False))
+
+                            toggle_switch.stateChanged.connect(lambda chk, idx=i['key']: self.on_dev_flag_changed(chk, idx))
+                            self.dev_flag_toggles[i['key']] = toggle_switch
+
+                            if not i.get('disabled', False):
+                                layout.addWidget(widget)
                         else:
-                            checkbox.checkStateChanged.connect(lambda chk,idx=i['key']:(self.save_dev_config(chk, idx)))   
-                        checkbox.setChecked(dev_flags.get(i['key'], False))
+                            checkbox: UCheckBox = UCheckBox(i['name'])
 
-                        key = QLabel(i['key'])
-                        desc = QLabel(i['desc'])
+                            checkbox.setChecked(dev_flags.get(i['key'], False))
 
-                        set_style(key, StyleClass.code + ' ' + StyleClass.d_code)
-                        set_style(desc, StyleClass.d_11)                        
+                            checkbox.checkStateChanged.connect(lambda chk, idx=i['key']: self.on_dev_flag_changed(chk, idx))
+                            self.dev_flag_toggles[i['key']] = checkbox
 
-                        layout.addWidget(checkbox)
-                        layout.addWidget(key)
-                        layout.addWidget(desc)
-                        layout.addWidget(create_horizontal_line())    
+                            key = QLabel(i['key'])
+                            desc = QLabel(i['desc'])
+
+                            set_style(key, StyleClass.code + ' ' + StyleClass.d_code)
+                            set_style(desc, StyleClass.d_11)     
+
+                            checkbox.setDisabled(i.get('disabled', False))              
+
+                            layout.addWidget(checkbox)
+                            layout.addWidget(key)
+                            layout.addWidget(desc)
+                            layout.addWidget(create_horizontal_line())    
         restart = uiml.compile_ui_file(get_resource_path('ui', 'settings', 'bottom.gui'), additional=self.addtional_local_value)
         
         layout.addLayout(UIWindow(restart).show())
@@ -2902,7 +3130,7 @@ class SettingWindow(SelectUI, UMainWindow):
                 self.enable_update.setCheckState(Qt.Checked)
                 return
         else:
-            should_check_update_res = should_check_update()
+            should_check_update_res = Updater.should_check_update()
             main_window.on_check_update()
         self.on_setting_changed(self.enable_update.isChecked, SettingText.update_enabled)
         
@@ -2964,12 +3192,16 @@ class SettingWindow(SelectUI, UMainWindow):
         else:
             auto_start_manager.disable()
 
-    def on_need_restart_setting_changed(self, handle, key: str, restart_place: list[str] = ['a9'], *args):
+    def on_need_restart_setting_changed(self, handle, key: str, restart_service: list[str] | None = None, *args):
         '''托盘图标选择事件'''
-        global settings_need_restart
-
         self.on_setting_changed(handle, key, *args)
+        self.restart_ask(restart_service)
+
+    def restart_ask(self, restart_service: list[str] | None = None):
+        global settings_need_restart
         settings_need_restart = True
+
+        restart_service = ['a9'] if restart_service is None else restart_service
 
         lang = self.code_list['general.gui'].find_widget('general.lang_choice_layout.lang_choice').currentIndex()
         if lang >= 1:
@@ -2977,9 +3209,9 @@ class SettingWindow(SelectUI, UMainWindow):
         elif lang == 0:
             lang = system_lang
 
-        restart_place = list(map(lambda x: get_lang(x, lang_id=lang), restart_place))
+        restart_service = list(map(lambda x: get_lang(x, lang_id=lang), restart_service))
 
-        need_restart = MessageBox.warning(self, get_lang('15', lang_id=lang), f'{get_lang("89", lang_id=lang)}: {", ".join(restart_place)}', MessageButton.YESNO, MessageButton.YES)
+        need_restart = MessageBox.warning(self, get_lang('15', lang_id=lang), f'{get_lang("89", lang_id=lang)}: {", ".join(restart_service)}', MessageButton.YESNO, MessageButton.YES)
         if need_restart == MessageButton.ReturnValue.YES:
             self.restart()
         else:
@@ -3132,7 +3364,7 @@ class TrayApp:
                 MessageBox.warning(None, get_lang('15'), get_lang('ae'))
 
         # 创建热键监听器
-        self.hotkey_listener = get_hotkey_listener_instance()
+        self.hotkey_listener = HotkeyListener.get_hotkey_listener_instance()
         hotkey_listener.combination_pressed.connect(self.run_combination)
 
         # 创建系统托盘图标
@@ -3260,9 +3492,9 @@ class TrayApp:
                     logger.warning('Update thread is still running, force quit')
                     update_window.down_thread.terminate()  # 作为最后手段
                     update_window.down_thread.wait()
-                revert_update()
+                Updater.revert_update()
         else:
-            revert_update()
+            Updater.revert_update()
         self.quit_application()
         code()
         sys.exit(0)
@@ -3313,10 +3545,10 @@ class TrayApp:
     
     def on_combination_pressed(self, combination):
         '''处理组合键事件'''
-        combination = format_keys(combination, source=True)
+        combination = HotkeyListener.format_keys(combination, source=True)
 
         for index, i in enumerate(setting_keys):
-            if all_in_list(combination, setting_value.hotkey_list[i]):
+            if HotkeyListener.all_in_list(combination, setting_value.hotkey_list[i]):
                 self.run_command(index)
                 break
 
@@ -3350,195 +3582,200 @@ class TrayApp:
                     main_window.is_start_from_tray = True
             case _:
                 raise ValueError(f'Invalid command: {command}')
+
 if __name__ == '__main__':
-    init_success = False
+    try:
+        init_success = False
 
-    shared_memory = QSharedMemory(mem_id[0])
-    if shared_memory.attach():
-        # 已经有一个实例在运行
-        QMessageBox.critical(None, get_lang('14'), get_lang('d6'))
-        sys.exit(2)
-    shared_memory.create(1)
+        shared_memory = QSharedMemory(mem_id[0])
+        if shared_memory.attach():
+            # 已经有一个实例在运行
+            QMessageBox.critical(None, get_lang('14'), get_lang('d6'))
+            sys.exit(2)
+        shared_memory.create(1)
 
-    is_running = any(list(map(lambda x: QSharedMemory(x).attach(), mem_id[3:4])))
-    if is_running:
-        # 已经有一个实例在运行
-        QMessageBox.critical(None, get_lang('14'), get_lang('d6'))
-        sys.exit(2)
+        is_running = any(list(map(lambda x: QSharedMemory(x).attach(), mem_id[3:4])))
+        if is_running:
+            # 已经有一个实例在运行
+            QMessageBox.critical(None, get_lang('14'), get_lang('d6'))
+            sys.exit(2)
 
-    with open(get_resource_path('langs', 'packages.json'), 'r', encoding='utf-8') as f:
-        package_lang = json.load(f)
+        with open(get_resource_path('langs', 'packages.json'), 'r', encoding='utf-8') as f:
+            package_lang = json.load(f)
 
-    data_path = Path('data')
-    if not((data_path / 'first_run').exists()):
-        run_as_admin('install_pack.py', 'install_pack.exe')
-        sys.exit(0)
-    else:
-        with open(get_resource_path('package_info.json')) as f:
-            packages_info = json.load(f)
-        try:
-            # 加载并移除弃用扩展
-            packages = []
-            with open('packages.json', 'r', encoding='utf-8') as f:
-                packages_name: list = json.load(f)
-            for i in packages_name.copy():
-                try:
-                    packages.append(import_package(i))
-                except ValueError as e:
-                    logger.warning(f'Extension {i} is deprecated. Auto delete.')
-                    shutil.rmtree(f'extensions/{i}', ignore_errors=True)
-                    del packages_name[packages_name.index(i)]
-            for file in os.listdir('extensions'):
-                full_path = os.path.join('extensions', file)
-                # 检查是否是文件
-                if os.path.isfile(full_path):
-                    if file != 'packages.json':
-                        os.remove(full_path)
-                        logger.warning(f'Invalid extension {file} found. Auto delete.')
-                elif os.path.isdir(full_path):
-                    if file not in packages_name:
-                        logger.warning(f'Extension {file} is deprecated. Auto delete.')
-                        shutil.rmtree(full_path, ignore_errors=True)
-            if (os.path.exists('packages.json')) and (os.path.exists('extensions/packages.json')):
-                os.remove('extensions/packages.json')
-            with open('packages.json', 'w', encoding='utf-8') as f:
-                json.dump(packages_name, f)
-        except FileNotFoundError:
-            os.remove(data_path / 'first_run')
-            with open(data_path / 'first_run', 'w'):pass
-            if not(os.path.exists('packages.json')):
-                package = ['xystudio.clickmouse']
-                with open(fr'{Path.cwd()}\packages.json', 'w', encoding='utf-8') as f:
-                    json.dump(package, f)
-            if os.path.exists('extensions') and os.path.isdir('extensions'):
-                shutil.rmtree('extensions')
-            pass
+        data_path = Path('data')
+        if not((data_path / 'first_run').exists()):
+            run_as_admin('install_pack.py', 'install_pack.exe')
+            sys.exit(0)
+        else:
+            with open(get_resource_path('package_info.json')) as f:
+                packages_info = json.load(f)
+            try:
+                # 加载并移除弃用扩展
+                packages = []
+                with open('packages.json', 'r', encoding='utf-8') as f:
+                    packages_name: list = json.load(f)
+                for i in packages_name.copy():
+                    try:
+                        packages.append(import_package(i))
+                    except ValueError as e:
+                        logger.warning(f'Extension {i} is deprecated. Auto delete.')
+                        shutil.rmtree(f'extensions/{i}', ignore_errors=True)
+                        del packages_name[packages_name.index(i)]
+                for file in os.listdir('extensions'):
+                    full_path = os.path.join('extensions', file)
+                    # 检查是否是文件
+                    if os.path.isfile(full_path):
+                        if file != 'packages.json':
+                            os.remove(full_path)
+                            logger.warning(f'Invalid extension {file} found. Auto delete.')
+                    elif os.path.isdir(full_path):
+                        if file not in packages_name:
+                            logger.warning(f'Extension {file} is deprecated. Auto delete.')
+                            shutil.rmtree(full_path, ignore_errors=True)
+                if (os.path.exists('packages.json')) and (os.path.exists('extensions/packages.json')):
+                    os.remove('extensions/packages.json')
+                with open('packages.json', 'w', encoding='utf-8') as f:
+                    json.dump(packages_name, f)
+            except FileNotFoundError:
+                os.remove(data_path / 'first_run')
+                with open(data_path / 'first_run', 'w'):pass
+                if not(os.path.exists('packages.json')):
+                    package = ['xystudio.clickmouse']
+                    with open(fr'{Path.cwd()}\packages.json', 'w', encoding='utf-8') as f:
+                        json.dump(package, f)
+                if os.path.exists('extensions') and os.path.isdir('extensions'):
+                    shutil.rmtree('extensions')
+                pass
 
-        try:
-            with open(data_path / 'dev_flags.json', 'r', encoding='utf-8') as f:
-                dev_flags = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            dev_flags = {}
+            try:
+                with open(data_path / 'dev_flags.json', 'r', encoding='utf-8') as f:
+                    dev_flags = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                dev_flags = {}
+                
+            try:
+                with open(get_resource_path('dev_settings.json'), 'r', encoding='utf-8') as f:
+                    dev_settings = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                dev_settings = {}
             
-        try:
-            with open(get_resource_path('dev_settings.json'), 'r', encoding='utf-8') as f:
-                dev_settings = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            dev_settings = {}
-        
-        dev_back = dev_flags.copy()
-        for k in dev_flags.keys():
-            if k not in [i['key'] for i in dev_settings]:
-                del dev_back[k]
-                logger.warning(f'Beta feature ID:{k} is deprecated. Auto delete.')
-        dev_flags = dev_back.copy()
-        with open(data_path / 'dev_flags.json', 'w', encoding='utf-8') as f:
-            json.dump(dev_flags, f)
-        
-        # Windows API常量
-        logger.debug('Setting WinAPI const value')
-        DWMWA_USE_IMMERSIVE = 20
-        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-        DWM_WINDOW_CORNER_PREFERENCE = 33
-        DWMWCP_ROUND = 2
-        DWMNCRP_ENABLED = 1
+            dev_back = dev_flags.copy()
+            for k in dev_flags.keys():
+                if k not in [i['key'] for i in dev_settings]:
+                    del dev_back[k]
+                    logger.warning(f'Beta feature ID:{k} is deprecated. Auto delete.')
+            dev_flags = dev_back.copy()
+            with open(data_path / 'dev_flags.json', 'w', encoding='utf-8') as f:
+                json.dump(dev_flags, f)
+            
+            # Windows API常量
+            logger.debug('Setting WinAPI const value')
+            DWMWA_USE_IMMERSIVE = 20
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            DWM_WINDOW_CORNER_PREFERENCE = 33
+            DWMWCP_ROUND = 2
+            DWMNCRP_ENABLED = 1
 
-        logger.info('Loading services')
-        icon = get_icon('icon')
+            logger.info('Loading services')
+            icon = get_icon('icon')
 
-        refresh = Refresh()
-        setting_value = SettingValue()
-        clicker = Click()
-        auto_start_manager = StartManager()
-        color_getter = ColorGetter()
-        run_after = RunAfter()
-        webview = UWebView()
-        hotkey_listener = get_hotkey_listener_instance()
+            refresh = Refresh()
+            setting_value = SettingValue()
+            clicker = Click()
+            auto_start_manager = StartManager()
+            color_getter = ColorGetter()
+            run_after = RunAfter()
+            webview = UWebView()
+            hotkey_listener = HotkeyListener.get_hotkey_listener_instance()
+            level_manager = LevelManager.instance()
 
-        logger.info('Loading value')
-        logger.debug('Loading const value')
-        has_packages = os.path.exists(get_resource_path('packages'))
-        package_names, show_list, package_ids = get_packages()
+            logger.info('Loading value')
+            logger.debug('Loading const value')
+            has_packages = os.path.exists(get_resource_path('packages'))
+            package_names, show_list, package_ids = get_packages()
 
-        # 变量
-        logger.info('Define pathes')
+            # 变量
+            logger.info('Define pathes')
 
-        # 定义数据路径
-        cache_path = Path('cache')
-        update_cache_path = cache_path / 'update.json'
-        extension_path = Path('extensions')
+            # 定义数据路径
+            cache_path = Path('cache')
+            update_cache_path = cache_path / 'update.json'
+            extension_path = Path('extensions')
 
-        # 创建文件夹（如果不存在）
-        data_path.mkdir(parents=True, exist_ok=True)
-        cache_path.mkdir(parents=True, exist_ok=True)
-        extension_path.mkdir(parents=True, exist_ok=True)
+            # 创建文件夹（如果不存在）
+            data_path.mkdir(parents=True, exist_ok=True)
+            cache_path.mkdir(parents=True, exist_ok=True)
+            extension_path.mkdir(parents=True, exist_ok=True)
 
-        # 创建资源
-        update_cache = load_update_cache()
-        should_check_update_res = should_check_update() if setting_value.update_enabled else False
-        
-        settings_need_restart = False
-        can_update = False
+            # 创建资源
+            update_cache = Updater.load_update_cache()
+            should_check_update_res = Updater.should_check_update() if setting_value.update_enabled else False
+            
+            settings_need_restart = False
+            can_update = False
 
-        # 单位控制
-        latest_index = 2
+            # 单位控制
+            latest_index = 2
 
-        # 热键管理相关
-        is_error = True
-        delay_num = 0
-        time_num = 0
+            # 热键管理相关
+            is_error = True
+            delay_num = 0
+            time_num = 0
 
-        # 其他
-        can_run_hotkey = True # 热键是否可用
-        result = (None, None, None, None) # 更新检查结果
-        setting_keys = list(setting_value.hotkey_list.keys()) # 热键列表
-        code = 'git clone https://github.com/xystudiocode/pyClickMouse' # 复制代码
+            # 其他
+            can_run_hotkey = True # 热键是否可用
+            result = (None, None, None, None) # 更新检查结果
+            setting_keys = list(setting_value.hotkey_list.keys()) # 热键列表
+            code = 'git clone https://github.com/xystudiocode/pyClickMouse' # 复制代码
 
-        if in_dev:
-            logger.info('In development mode')
-            uiml.set_namespace(is_debug=True)
+            if in_dev:
+                logger.info('In development mode')
+                uiml.set_namespace(is_debug=True)
 
-        # 系统版本
-        windows_version = get_windows_version()
-        if windows_version is None: # 非windows
-            default_theme = 'Fusion'
-        elif windows_version < 10: # 低于win10
-            default_theme = 'Windows'
-        elif windows_version == 10: # win10
-            default_theme = 'Windows10'
-        elif windows_version == 11: # win11
-            default_theme = 'Windows11'
-        else: # 未知
-            default_theme = 'Fusion'
+            # 系统版本
+            windows_version = get_windows_version()
+            if windows_version is None: # 非windows
+                default_theme = 'Fusion'
+            elif windows_version < 10: # 低于win10
+                default_theme = 'Windows'
+            elif windows_version == 10: # win10
+                default_theme = 'Windows10'
+            elif windows_version == 11: # win11
+                default_theme = 'Windows11'
+            else: # 未知
+                default_theme = 'Fusion'
 
-        logger.info('Loading data successed')
+            logger.info('Loading data successed')
 
-        logger.info('Check and update registry version.')
+            logger.info('Check and update registry version.')
 
-        # 检查版本号与注册表是否一致,不一样就修改注册表
-        run_software('check_reg_ver.py', 'check_reg_ver.exe')
+            # 检查版本号与注册表是否一致,不一样就修改注册表
+            run_software('check_reg_ver.py', 'check_reg_ver.exe')
 
-        # 移除过期组件
-        shutil.rmtree('updater.old', ignore_errors=True)
-        
-        # 加载窗口
-        logger.info('Loading ui')
-        
-        main_window = MainWindow()
+            # 移除过期组件
+            shutil.rmtree('updater.old', ignore_errors=True)
+            
+            # 加载窗口
+            logger.info('Loading ui')
+            
+            main_window = MainWindow()
 
-        about_window = AboutWindow()
-        clean_cache_window = CleanCacheWindow()
-        update_ok_window = UpdateOKWindow()
-        update_window = UpdateWindow()
-        click_attr_window = ClickAttrWindow()
-        setting_window = SettingWindow()
-        set_import_extension_window = SetImportExtensionModeWindow()
-        on_input_change(type=InputChange.setting_window) # 更新时间估计状态
-        setting_window.click_setting_changed.connect(lambda: on_input_change(type=InputChange.setting_window))
-        setting_window.window_restarted.connect(on_update_setting_window)
+            about_window = AboutWindow()
+            clean_cache_window = CleanCacheWindow()
+            update_ok_window = UpdateOKWindow()
+            update_window = UpdateWindow()
+            click_attr_window = ClickAttrWindow()
+            setting_window = SettingWindow()
+            set_import_extension_window = SetImportExtensionModeWindow()
+            on_input_change(type=InputChange.setting_window) # 更新时间估计状态
+            setting_window.click_setting_changed.connect(lambda: on_input_change(type=InputChange.setting_window))
+            setting_window.window_restarted.connect(on_update_setting_window)
 
-        app = TrayApp()
-        app.app.setStyle(setting_value.theme)
-        init_success = True
+            app = TrayApp()
+            app.app.setStyle(setting_value.theme)
+            init_success = True
 
-        app.run()
+            app.run()
+    except Exception as e:
+        logger.exception('clickmouse.main', mode=ExceptionVal.all)
